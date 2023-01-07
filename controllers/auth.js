@@ -1,5 +1,6 @@
-const passport = require("passport");
-const Users = require("../models/users.js");
+import passport from "passport";
+import axios from "axios";
+import Users from "../models/users.js";
 
 passport.use(Users.createStrategy());
 passport.serializeUser(function (user, done) {
@@ -13,9 +14,9 @@ passport.deserializeUser(function (id, done) {
 
 const loginUser = (req, res) => {
   try {
-    const user = { username: req.body.username, password: req.body.password };
     passport.authenticate("local", (err, user, info) => {
       if (err) {
+        console.log(err);
         return res.status(401).send(err);
       }
       if (!user) {
@@ -30,53 +31,82 @@ const loginUser = (req, res) => {
     })(req, res);
   } catch (err) {
     console.log(err);
-    return res.status(500).send(err.message);
+    return res.status(500).send(err);
   }
 };
 
-const checkUsername = async (req, res) => {
+const codeforcesHandleExists = async (codeforcesHandle) => {
   try {
-    const username = req.query.username;
-    const user = await Users.findOne({ username });
-    if (user) {
-      return res.status(200).send({ userExists: true });
-    } else {
-      return res.status(200).send({ userExists: false });
-    }
+    const cfUserData = await axios.get(
+      `https://codeforces.com/api/user.info?handles=${codeforcesHandle}`
+    );
+    return cfUserData.data.status === "OK";
   } catch (err) {
-    console.log(err);
-    return res.status(500).send(err.message);
+    console.log(err.response.data);
+    return false;
   }
 };
 
-const registerUser = (req, res) => {
+const checkSubmission = async (codeforcesHandle) => {
+  const url = `https://codeforces.com/api/user.status?handle=${codeforcesHandle}&from=1&count=1`;
+
+  try {
+    const response = await axios.get(url);
+    const submission = response.data.result[0];
+
+    const { contestId, index } = submission.problem;
+
+    if (
+      contestId === 4 &&
+      index === "A" &&
+      submission.verdict === "COMPILATION_ERROR"
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.log(err.response.data);
+    return false;
+  }
+};
+
+const signupUser = async (req, res) => {
   try {
     const { username, password } = req.body;
+
+    if (!(await codeforcesHandleExists(username)))
+      return res.status(400).send({ err: "Invalid Codeforces Handle" });
+
+    // if (!(await checkSubmission(username)))
+    // return res.status(400).send({ err: "No submission found" });
+
     Users.register({ username }, password, (err, user) => {
       if (err) {
         console.log(err);
-        return res.redirect("/auth/signup");
+        return res.status(500).send({ err: err.message });
       }
       passport.authenticate("local")(req, res, () => {
-        return res.redirect("/");
+        return res.send(user);
       });
     });
   } catch (err) {
     console.log(err);
-    return res.status(500).send(err.message);
+    return res.status(500).send({ err: err.message });
   }
 };
 
-const logoutUser = (req, res) => {
-  req.logout();
-  return res.redirect("/");
-};
-
-const getUser = (req, res) => {
-  if (req.isAuthenticated()) {
-    return res.send(req.user._id);
+const getUserId = async (req, res) => {
+  try {
+    if (req.isAuthenticated()) {
+      return res.send({ userId: req.user.username });
+    } else {
+      return res.send({ userId: null });
+    }
+  } catch (error) {
+    console.log(error);
+    return res.status(500).send({ err: error.message });
   }
-  return res.status(400).send(null);
 };
 
-module.exports = { loginUser, registerUser, logoutUser, getUser, checkUsername};
+export { loginUser, signupUser, getUserId };

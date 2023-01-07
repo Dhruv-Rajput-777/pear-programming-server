@@ -1,10 +1,18 @@
-const express = require("express");
+import express, { application } from "express";
+import path from "path";
+import { getMessages } from "../controllers/dashboard.js";
+const __dirname = path.resolve();
 const router = express.Router();
 
-const { getSuggestions, getPosts } = require("../controllers/api");
+import { scrapeQuestion } from "../controllers/question.js";
 
-router.get("/suggestions", getSuggestions);
+router.post("/getQuestionSource", scrapeQuestion);
 
-router.post("/getPosts", getPosts);
+router.get("/getQuestion/:questionSource", (req, res) => {
+  const path = __dirname + "/questions/" + req.params.questionSource;
+  return res.sendFile(path);
+});
 
-module.exports = router;
+router.get("/messages", getMessages);
+
+export default router;
